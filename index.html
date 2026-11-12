@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#16181d">
+<title>Potemkin Card Tracker</title>
+<style>
+  :root {
+    --bg: #f4f4f6;
+    --surface: #ffffff;
+    --text: #1b1d22;
+    --muted: #6b6f78;
+    --chip: #e4e5ea;
+    --chip-on-bg: #1b1d22;
+    --chip-on-text: #ffffff;
+    --border: #d4d6dc;
+
+    --green: #43a047;
+    --blue: #3d8fe0;
+    --orange: #ffb35c;
+    --red: #e53935;
+    --white: #fafafa;
+    --white-edge: #b9bcc4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #16181d;
+      --surface: #22252c;
+      --text: #ececf0;
+      --muted: #9a9ea8;
+      --chip: #30343c;
+      --chip-on-bg: #ececf0;
+      --chip-on-text: #16181d;
+      --border: #3a3e47;
+      --white-edge: #f0f0f0;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+  }
+  main {
+    max-width: 560px;
+    margin: 0 auto;
+    padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+  }
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  h1 { font-size: 1.15rem; margin: 0 0 12px; }
+  .count { color: var(--muted); font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+
+  .controls { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-bottom: 14px; }
+  .segmented { display: inline-flex; background: var(--chip); border-radius: 999px; padding: 3px; }
+  .segmented button {
+    border: 0; background: transparent; color: var(--text);
+    font: inherit; font-size: 0.85rem; padding: 6px 12px; border-radius: 999px; cursor: pointer;
+  }
+  .segmented button[aria-pressed="true"] { background: var(--chip-on-bg); color: var(--chip-on-text); }
+
+  .grid { display: grid; gap: 5px; align-items: center; }
+  .grid.by-color { grid-template-columns: 26px repeat(9, 1fr); }
+  .grid.by-number { grid-template-columns: 26px repeat(5, 1fr); }
+  .row-label { display: flex; justify-content: center; align-items: center; font-weight: 700; color: var(--muted); }
+  .row-label svg { width: 20px; height: 20px; }
+
+  .card {
+    position: relative;
+    aspect-ratio: 3 / 4;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    border-radius: 6px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    font: inherit; font-weight: 800; font-size: 1.1rem;
+    cursor: pointer; padding: 0;
+    transition: opacity 0.12s, transform 0.08s;
+  }
+  .grid.by-number .card { aspect-ratio: 4 / 3; flex-direction: row; gap: 6px; }
+  .card:active { transform: scale(0.94); }
+  .card svg { width: 12px; height: 12px; }
+  .card.played { opacity: 0.18; }
+  .card.played::after {
+    content: ""; position: absolute; left: 12%; right: 12%; top: 50%;
+    border-top: 2px solid currentColor; transform: rotate(-35deg);
+  }
+  .card.hidden { visibility: hidden; }
+
+  .suit-green  { background: var(--green);  color: #0d2410; }
+  .suit-blue   { background: var(--blue);   color: #08203a; }
+  .suit-orange { background: var(--orange); color: #3a2203; }
+  .suit-red    { background: var(--red);    color: #ffffff; }
+  .suit-white  { background: var(--white);  color: #1b1d22; border-color: var(--white-edge); }
+  .row-label.suit-green, .row-label.suit-blue, .row-label.suit-orange,
+  .row-label.suit-red, .row-label.suit-white { background: none; border: 0; }
+  .row-label.suit-green  svg { fill: var(--green); }
+  .row-label.suit-blue   svg { fill: var(--blue); }
+  .row-label.suit-orange svg { fill: var(--orange); }
+  .row-label.suit-red    svg { fill: var(--red); }
+  .row-label.suit-white  svg { fill: var(--white); stroke: var(--white-edge); stroke-width: 1.5; }
+  .card svg { fill: currentColor; }
+
+  .new-game {
+    display: block; width: 100%; margin-top: 20px;
+    background: transparent; color: var(--text);
+    border: 1px solid var(--border); border-radius: 10px;
+    font: inherit; padding: 12px; cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Potemkin Card Tracker</h1>
+    <span class="count" id="count"></span>
+  </header>
+
+  <div class="controls">
+    <div class="segmented" id="filter" role="group" aria-label="Show">
+      <button data-value="all">All</button>
+      <button data-value="unplayed">Not played</button>
+      <button data-value="played">Played</button>
+    </div>
+    <div class="segmented" id="group" role="group" aria-label="Rows">
+      <button data-value="color">By color</button>
+      <button data-value="number">By number</button>
+    </div>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+  <button class="new-game" id="new-game">New game</button>
+</main>
+
+<script>
+  const SUITS = [
+    { id: "green",  name: "Green",        shape: "diamond" },
+    { id: "blue",   name: "Blue",         shape: "circle" },
+    { id: "orange", name: "Light Orange", shape: "pentagon" },
+    { id: "red",    name: "Red",          shape: "square" },
+    { id: "white",  name: "White",        shape: "hexagon" },
+  ];
+  const NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+  const TOTAL = SUITS.length * NUMBERS.length;
+
+  const SHAPE_PATHS = {
+    diamond:  '<polygon points="12,1 23,12 12,23 1,12"/>',
+    circle:   '<circle cx="12" cy="12" r="11"/>',
+    pentagon: '<polygon points="12,1 23,9.5 19,23 5,23 1,9.5"/>',
+    square:   '<rect x="2" y="2" width="20" height="20"/>',
+    hexagon:  '<polygon points="6,2 18,2 23,12 18,22 6,22 1,12"/>',
+  };
+  const shapeSvg = (shape) => `<svg viewBox="0 0 24 24" aria-hidden="true">${SHAPE_PATHS[shape]}</svg>`;
+
+  const STORAGE_KEY = "potemkin-card-tracker";
+  const state = loadState();
+
+  function loadState() {
+    const fallback = { played: [], filter: "all", group: "color" };
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+      return saved ? { ...fallback, ...saved } : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  function saveState() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch {
+      // Storage unavailable (private mode etc.) — tracking still works for this visit.
+    }
+  }
+
+  const cardId = (suit, number) => `${suit.id}-${number}`;
+  const isPlayed = (id) => state.played.includes(id);
+
+  function togglePlayed(id) {
+    state.played = isPlayed(id) ? state.played.filter((p) => p !== id) : [...state.played, id];
+    saveState();
+    render();
+  }
+
+  function isVisible(id) {
+    if (state.filter === "played") return isPlayed(id);
+    if (state.filter === "unplayed") return !isPlayed(id);
+    return true;
+  }
+
+  function cardButton(suit, number) {
+    const id = cardId(suit, number);
+    const played = isPlayed(id);
+    const classes = ["card", `suit-${suit.id}`];
+    if (played) classes.push("played");
+    if (!isVisible(id)) classes.push("hidden");
+    const label = `${suit.name} ${suit.shape} ${number}, ${played ? "played" : "not played"}`;
+    return `<button class="${classes.join(" ")}" data-id="${id}" aria-pressed="${played}" aria-label="${label}">`
+      + `${shapeSvg(suit.shape)}<span>${number}</span></button>`;
+  }
+
+  function renderByColor() {
+    return SUITS.map((suit) =>
+      `<div class="row-label suit-${suit.id}" title="${suit.name}">${shapeSvg(suit.shape)}</div>`
+      + NUMBERS.map((number) => cardButton(suit, number)).join("")
+    ).join("");
+  }
+
+  function renderByNumber() {
+    return NUMBERS.map((number) =>
+      `<div class="row-label">${number}</div>`
+      + SUITS.map((suit) => cardButton(suit, number)).join("")
+    ).join("");
+  }
+
+  function render() {
+    const grid = document.getElementById("grid");
+    grid.className = `grid by-${state.group}`;
+    grid.innerHTML = state.group === "number" ? renderByNumber() : renderByColor();
+
+    document.getElementById("count").textContent = `${TOTAL - state.played.length} of ${TOTAL} not played`;
+
+    for (const [groupId, value] of [["filter", state.filter], ["group", state.group]]) {
+      for (const button of document.querySelectorAll(`#${groupId} button`)) {
+        button.setAttribute("aria-pressed", String(button.dataset.value === value));
+      }
+    }
+  }
+
+  document.getElementById("grid").addEventListener("click", (event) => {
+    const card = event.target.closest(".card");
+    if (card) togglePlayed(card.dataset.id);
+  });
+
+  for (const groupId of ["filter", "group"]) {
+    document.getElementById(groupId).addEventListener("click", (event) => {
+      const button = event.target.closest("button");
+      if (!button) return;
+      state[groupId] = button.dataset.value;
+      saveState();
+      render();
+    });
+  }
+
+  document.getElementById("new-game").addEventListener("click", () => {
+    if (state.played.length && !confirm("Start a new game? This clears all played cards.")) return;
+    state.played = [];
+    saveState();
+    render();
+  });
+
+  render();
+</script>
+</body>
+</html>
